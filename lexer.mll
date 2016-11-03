@@ -27,13 +27,47 @@
     raise (Lexer_error (lex_range lexbuf,
         Printf.sprintf "Unexpected character: '%c'" c))
 
+  let invalid_int lexbuf (value:string) : 'a =
+    raise (Lexer_error (lex_range lexbuf,
+        Printf.sprintf "Invalid integer: '%s'" value))
 }
 
-(* Declare your aliases (let foo = regex) and rules here. *)
-
+let digit = ['0'-'9']
+let space = [' ' '\t']
+let nl = ('\r'|'\n'|"\r\n")
 
 rule token = parse
-  | eof { EOF }
-  | 'X' { X (lex_range lexbuf) }
+  | eof             { EOF }
+  | space+          { token lexbuf }
+  | nl+             { token lexbuf }
 
-  | _ as c { unexpected_char lexbuf c }
+  | '('             { LBRACE (lex_range lexbuf)}
+  | ')'             { RBRACE (lex_range lexbuf)}
+
+  | '!'             { LOGNOT (lex_range lexbuf) }
+  | '~'             { BITNOT (lex_range lexbuf) }
+
+  | '&'             { BITAND (lex_range lexbuf) }
+  | '|'             { BITOR (lex_range lexbuf) }
+  | '+'             { PLUS (lex_range lexbuf) }
+  | '-'             { MINUS (lex_range lexbuf) }
+  | '*'             { MULT (lex_range lexbuf) }
+  | '<'             { LT (lex_range lexbuf) }
+  | "<="            { LTE (lex_range lexbuf) }
+  | '>'             { GT (lex_range lexbuf) }
+  | ">="            { GTE (lex_range lexbuf) }
+  | "=="            { EQUAL (lex_range lexbuf) }
+  | "!="            { NOTEQUAL (lex_range lexbuf) }
+  | "<<"            { SHL (lex_range lexbuf) }
+  | ">>"            { SAR (lex_range lexbuf) }
+  | ">>>"           { SHR (lex_range lexbuf) }
+    
+  | digit+ as value { try 
+                        let int_val = Int32.of_string value in 
+                        INT (lex_range lexbuf, int_val) 
+                      with 
+                      | _ -> invalid_int lexbuf value
+                    }
+
+  | 'X'             { X (lex_range lexbuf) }
+  | _ as c          { unexpected_char lexbuf c }
