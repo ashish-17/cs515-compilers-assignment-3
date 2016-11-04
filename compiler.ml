@@ -33,46 +33,47 @@ let rec emit_exp (e:exp) (stream : insn list) : insn list =
     begin
         match e with 
         | Cint i -> Mov (Imm i, eax) :: stream 
-        | Arg -> Mov (ecx, eax) :: stream
-        | Binop (o,l,r) -> (
-            match o with
-	        | Plus -> 
-                    let left_insn = emit_exp l stream in
-                    let push_insn = Push (eax) :: left_insn in
-                    let right_insn = emit_exp r push_insn in
-                    let pop_insn = Pop (ebx)::right_insn in
-                    Add (ebx, eax) :: pop_insn
-            (*| Times -> "Times" 
-            | Minus -> "Minus"*)
-            )
-	       (* | Eq -> "Eq" 
-            | Neq -> "Neq" 
-            | Lt -> "Lt" 
-            | Lte -> "Lte"
-	        | Gt -> "Gt" 
-            | Gte -> "Gte" 
-            | And -> "And" 
-            | Or -> "Or"
-	        | Shr -> "Shr" 
-            | Sar -> "Sar" 
-            | Shl -> "Shl" in
-	            Printf.sprintf "(Binop (%s,%s,%s))" binop_str
-	            (ml_string_of_exp l) (ml_string_of_exp r)
-            )
-        | Unop (o,l) -> (
-	        match o with
-	        | Neg -> "Neg" 
-            | Lognot -> "Lognot" 
-            | Not -> "Not" in
-	            Printf.sprintf "(Unop (%s,%s))" unop_str (ml_string_of_exp l)
-            )*)
+        | Arg -> Mov (edx, eax) :: stream
+        | Binop (o,l,r) -> (binop_exp o l r stream)
+        | Unop (o,l) -> (unop_exp o l stream)
 end
+    and binop_exp (o:Ast.binop) (l: exp) (r: exp) (stream: insn list) : insn list = 
+    begin
+        let left_insn = emit_exp l stream in
+        let push_insn = Push (eax) :: left_insn in
+        let right_insn = emit_exp r push_insn in
+        let mov_insn = Mov (eax, ecx) :: right_insn in
+        let pop_insn = Pop(eax)::mov_insn in
+        match o with
+        | Plus -> Add(ecx, eax) :: pop_insn
+        | Minus -> Sub(ecx, eax) :: pop_insn
+        | Times -> Imul(ecx, Eax) :: pop_insn
+        | And -> Rux86.And(ecx, eax) :: pop_insn
+        | Or -> Rux86.Or(ecx, eax) :: pop_insn
+        | Shr -> Rux86.Shr(ecx, eax) :: pop_insn
+        | Sar -> Rux86.Sar(ecx, eax) :: pop_insn
+        | Shl -> Rux86.Shl(ecx, eax) :: pop_insn
+        | Eq -> [Setb(Rux86.Eq, eax);Mov(Imm 0l, eax);Cmp(ecx, eax)] @ pop_insn
+        | Neq -> [Setb(Rux86.NotEq, eax);Mov(Imm 0l, eax);Cmp(ecx, eax)] @ pop_insn
+        | Lt -> [Setb(Rux86.Slt, eax);Mov(Imm 0l, eax);Cmp(ecx, eax)] @ pop_insn
+        | Lte -> [Setb(Rux86.Sle, eax);Mov(Imm 0l, eax);Cmp(ecx, eax)] @ pop_insn
+        | Gt -> [Setb(Rux86.Sgt, eax);Mov(Imm 0l, eax);Cmp(ecx, eax)] @ pop_insn
+        | Gte -> [Setb(Rux86.Sge, eax);Mov(Imm 0l, eax);Cmp(ecx, eax)] @ pop_insn
+    end
+    and unop_exp (o:Ast.unop) (l: exp) (stream: insn list) : insn list = 
+    begin
+        let left_insn = emit_exp l stream in
+        match o with
+        | Neg -> Neg(eax) :: left_insn
+        | Lognot -> [Setb(Rux86.Eq, eax);Mov(Imm 0l, eax);Cmp(eax, ecx);Mov(Imm 0l, ecx)] @ left_insn
+        | Not -> Rux86.Not(eax) :: left_insn
+    end
 
 let compile_exp (ast:exp) : Cunit.cunit =
     let block_name = (Platform.decorate_cdecl "program") in
     let rev_insns = emit_exp ast [] in
     let insns = List.rev rev_insns in
-    let insn_list = [Push(ebp);Mov(esp, ebp);Mov(stack_offset 8l, ecx)] @ insns @ [Pop(ebp); Ret] in 
+    let insn_list = [Push(ebp);Mov(esp, ebp);Mov(stack_offset 8l, edx)] @ insns @ [Pop(ebp); Ret] in 
     let blk = {
         label= (mk_lbl_named block_name); 
         insns = insn_list; 
